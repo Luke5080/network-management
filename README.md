@@ -16,7 +16,7 @@ After cloning the repository, it is necessary to download the appropiate package
 `pip3 install -r requirements.txt`
 
 4. Run the script:
-``python3 isalive.py`
+`python3 isalive.py`
 
 
 
