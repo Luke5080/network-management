@@ -30,7 +30,7 @@ The initial script menu will present two options:
 
 If it is your first time running the script, choose option 2 to create a new inventory, or option 1, which will detect that you have no inventories created and will prompt you to create a new one. Creating a new inventory will require the following information:  
 **The username needed to log into these devices**  
-**The password for this account**
+**The password for this account**  
 **The amount of devices you would like to the inventory**  
 **The name and management IP of each device**  
 
