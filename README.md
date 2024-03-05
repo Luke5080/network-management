@@ -22,7 +22,7 @@ After cloning the repository, it is necessary to download the appropiate package
 `python3 isalive.py`  
 
 ## Script Usage:  
-IsAlive runs through an inventory concept - You create an inventory with networking device names and their corresponding management IPs. Once you create an inventory with your desired networking devices, You can perform tasks, such as checking if all the devices are up (through the script pinging each management IP provided), check all and/or a specific interface status, check OSPF/BGP configurtion/routing tables and check the CDP neighbours of a specific device.  
+IsAlive runs through an inventory concept - You create an inventory with networking device names and their corresponding management IPs. Once you create an inventory with your desired networking devices, You can perform tasks, such as checking if all the devices are up (through the script pinging each management IP provided), check all and/or a specific interface status, check OSPF/BGP configuration/routing tables and check the CDP neighbours of a specific device.  
 
 Once an inventory is created, it will be accessible each time you run the script. This is achieved by creating a text file with a dictionary containing information about your inventory, and the script will read it each time it is run. This file is stored as `.invlist.txt`.  
 The initial script menu will present two options:  
