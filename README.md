@@ -4,7 +4,7 @@
 IsAlive is my first attempt to create a network management automation script with Python. This is not intended to be used in production environments, and is purely for experimental purposes, as I wanted to try a full-scale network management automation script using Python. I am still relatively new to Python, so I would love for constructive criticiscm regarding my code, the way I have written it, the logic I implemented or if there are better approaches/methods to some of the objectives that I intend to meet with this script.  
 
 ## How to use  
-**This script can only be run through a Linux terminal. I am currently working on a way to be make it run through Windows CMD or PS.**  
+**This script can only be run through a Linux terminal. I am currently working on a way to make it run through Windows CMD or PS.**  
 **This script also only works with devices using Cisco IOS. Future project plans may include expanding the capabilites of the script which use other networking OS's.**  
 
 After cloning the repository, it is necessary to download the appropiate package requirements to be able to run the script to run. This can be done using `pipreqs`.  
