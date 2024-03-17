@@ -1,26 +1,33 @@
-import os, getpass, time, socket,ast, threading, colorama
-from pyfiglet import figlet_format
-from os import system
-from netmiko import ConnectHandler
-from colorama import Fore, Back, Style
-
-
-'''
+"""
 IsAlive Conceptual Script
 Not intended to be used in production environments
 A purely expiremental project
 Author: Luke Marshall
 GitHub: https://github.com/Luke5080
 Python file needs to run in the repo directory
-'''
+"""
+
+import os
+import getpass
+import time
+import socket
+import ast
+import threading
+import platform
+import colorama
+from pyfiglet import figlet_format
+from netmiko import ConnectHandler
+from colorama import Fore, Style
+
 
 colorama.init(autoreset=True)
 
 working_dir = os.getcwd()
-working_dir_contents = os.listdir(working_dir)
+
+user_system = platform.system()
 
 ## Check first if .invlist exists - by default it should be in the directory
-## if it has been deleted for some reason create it in the current directory (should be repo directory)
+## if it has been deleted for some reason create it in the current directory
 if os.path.isfile(".invlist.txt"):
     if os.path.getsize(".invlist.txt") > 0:
         with open(".invlist.txt","r") as file:
@@ -36,7 +43,118 @@ else:
 
 load_slide = f"{Style.BRIGHT}="*20
 
+class DeviceTasks():
+    '''
+    class to create an object for a device based on the device creds + IP
+    can then perform all SSH operations on the created object
+    '''
+    def __init__(self, username, password, ip):
+        self.username = username
+        self.password = password
+        self.ip = ip
+
+        self.device_attr = ConnectHandler(
+        device_type="cisco_ios",
+        host= ip,
+        username= username,
+        password= password,
+        )
+
+    def health_check(self):
+        """gathers info for health check such as CPU usage/memory usage
+        /uptime of switch/environmental info"""
+
+        uptime = self.device_attr.send_command("sh version | inc uptime | Last")
+
+        cpu_usage = self.device_attr.send_command("sh process cpu sorted")
+
+        cpu_usage = cpu_usage.split("\n")
+
+        cpu_usage_sort = list(cpu_usage[1:5])
+
+        cpu_history = self.device_attr.send_command("sh process cpu history")
+
+        memory_info = self.device_attr.send_command("sh process memory sorted")
+
+        memory_info = memory_info.split("\n")
+
+        mem_in_nums = memory_info[0]
+
+        mem_in_nums = mem_in_nums.split(" ")
+
+        for word in mem_in_nums:
+            if word == "":
+                mem_in_nums.remove(word)
+
+        mem_in_nums.remove("Processor")
+        mem_in_nums.remove("Pool")
+
+        total_mem = int(mem_in_nums[1])
+        used_mem = int(mem_in_nums[3])
+
+        total_mem_use = (used_mem / total_mem) * 100
+
+        return uptime, cpu_usage_sort, cpu_history, total_mem_use, total_mem, used_mem
+
+    def check_all_int(self) -> str:
+        """function to check all interfaces of a device"""
+        output = self.device_attr.send_command("sh ip int br")
+        return output
+    
+    def check_int(self,int_name:str) -> str:
+        """function to check a specific interface on a device"""
+        command = f"sh int {int_name}"
+        output = self.device_attr.send_command(command)
+        return output
+    
+    def cdp_neigh(self) -> str:
+        """function to check cdp neighbour from a device"""
+        output = self.device_attr.send_command("sh cdp neigh")
+        return output
+    
+    def ospf_check(self) -> str:
+        """function to check ospf configurations on a device"""
+        output = self.device_attr.send_command("sh ip ospf")
+        return output
+    
+    def bgp_check(self) -> str:
+        """function to check bgp configuration on a device"""
+        output = self.device_attr.send_command("sh ip bgp")
+        return output
+    
+    def test_connec(self, end_ip: str) -> str: #ToDo: Not implemented
+        command = f"ping {end_ip}"
+        output = self.device_attr.send_command(command)
+        return output
+
+
+    def get_facts(self) -> list:
+        """function to grab device make/model details"""
+
+        output = self.device_attr.send_command("sh version | inc Model Number")
+
+        count_model = output.count("Model Number")
+
+        if count_model > 1:
+            model_info = []
+            refactor_output = output.split("\n")
+            for item in refactor_output:
+                item = item.strip("Model Number").strip(":").strip(" ")
+                model_info.append(item)
+
+            model_info = list(set(model_info)) 
+
+        else:
+            model_info = []
+
+            refactor_output = output.strip("Model Number").strip(":").strip(" ")
+
+            model_info.append(model_info)
+
+        return model_info
+
 def welcome():
+    """welcome function"""
     text = "Is Alive?"
     banner = figlet_format(text, font="big")
     print(Fore.BLUE + banner)
@@ -44,10 +162,10 @@ def welcome():
     print(f"{Fore.CYAN}{Style.BRIGHT}Author: Luke Marshall")
     print(f"{load_slide}\n")
 
-
 def create_inv(inv_list):
+    """Function to create inventory"""
     print(f"{Style.BRIGHT}Let's set up a new inventory\nWhat will we name this inventory?")
-    inv_name = input(">>>")
+    inv_name = input(">>> ")
 
     # Ensure user doesn't create an inventory with name already in use
     inv_check = [key for key in inv_list]
@@ -59,7 +177,7 @@ def create_inv(inv_list):
     print(f"Configuring inventory {Fore.BLUE}{Style.BRIGHT}{inv_name}")
     print(load_slide)
     print(f"{Style.BRIGHT}How many devices would you like to add to this inventory?")
-    dev_amount = int(input(">>>"))
+    dev_amount = int(input(">>> "))
 
     devices = {}
 
@@ -96,10 +214,10 @@ def create_inv(inv_list):
         ## Check first if IP is valid
 
         try:
-	        socket.inet_aton(mgmt_ip)
+            socket.inet_aton(mgmt_ip)
         except socket.error:
-	        print(f"{Fore.RED}IP ADDRESS NOT VALID")
-	        mgmt_ip = input(">>> ")
+            print(f"{Fore.RED}IP ADDRESS NOT VALID")
+            mgmt_ip = input(">>> ")
 
         ## Ensure IP address is not the same as one configured for another device
 
@@ -125,26 +243,38 @@ def create_inv(inv_list):
         if check_up.lower() == "y":
             print(load_slide) 
             print(f"{Fore.GREEN}{Style.BRIGHT}\nPinging IP address ... sending 4 pings")
-            status_ping = os.popen(f"ping -c 4 {mgmt_ip}").read()
 
-            # If ping receives 4 replies, do nothing, else prompt the user to either continue anyway or remove current device
-            if "4 received" in status_ping:
+            if user_system != "Windows":
+                status_ping = os.popen(f"ping -c 4 {mgmt_ip}").read()
+            else:
+                status_ping = os.popen(f"ping {mgmt_ip}").read()
+
+            # If ping receives 4 replies, do nothing, else prompt the user to either 
+            # continue anyway or remove current device
+            if user_system != "Windows" and "4 received" in status_ping:
                 print(f"{Fore.GREEN}{Style.BRIGHT}OK: IP Address reachable via ping")
                 print(load_slide)
                 print(f"{Style.BRIGHT}{Fore.BLUE}\nDevice Name: {device_name}\nMgmt IP Address: {mgmt_ip}\n")
+            
+            elif user_system == "Windows" and "Received = 4" in status_ping:
+                print(f"{Fore.GREEN}{Style.BRIGHT}OK: IP Address reachable via ping")
+                print(load_slide)
+                print(f"{Style.BRIGHT}{Fore.BLUE}\nDevice Name: {device_name}\nMgmt IP Address: {mgmt_ip}\n")
+            
 
             else:
                 print(f"{Fore.RED}IP Address not reachable\nWould you like to:\n1: Continue Anyway 2: Remove this device")
                 while True:
                     try:
                         choice = input(">>>")
-                        if choice == "1" or choice == "2":
+                        if choice in ("1","2"):
                             break
                     except ValueError:
                         print(f"{Fore.RED}Please enter a valid response")
 
                 if choice == "2":
-                    del devices[device_name]
+                    del devices[device_name]  
+
 
     return devices, inv_name
 
@@ -171,113 +301,71 @@ def upstatus(inv_name):
     
     dev_up_stat={}
 
-    t = load_anim()
+    t = LoadAnim()
     t.start()
 
     not_good = ["0","1","2","3"]
 
     for dev, ip in working_inv.items():
         if dev != "vars":
-            status_ping = os.popen(f"ping -c 4 {ip}").read()
-            if "4 received" in status_ping:
-                dev_up_stat[dev] = "UP - 0% packet loss"
+            dev_up_stat[dev] = []
+
+            if user_system != "Windows":
+                status_ping = os.popen(f"ping -c 4 {ip}").read()
+            else:
+                status_ping = os.popen(f"ping {ip}").read()
+
+            if user_system != "Windows" and "4 received" in status_ping:
+                dev_up_stat[dev].append("UP - 0% packet loss")
+                dev_up_stat[dev].append("1")
+            
+            elif user_system == "Windows" and "Received = 4" in status_ping:
+                dev_up_stat[dev].append("UP - 0% packet loss")
+                dev_up_stat[dev].append("1")
 
             else:
                 for num in not_good:
-                    chk_str = f"{num} received"
+                    if user_system != "Windows":
+                        chk_str = f"{num} received"
+
+                    elif user_system == "Windows":
+                        chk_str = f"Received = {num}"
 
                     if num == "3":
                         if chk_str in status_ping:
-                            dev_up_stat[dev] = "DOWN - 25% packet loss"
+                            dev_up_stat[dev].append("DOWN - 25% packet loss")
+                            dev_up_stat[dev].append("0")
 
                     elif num == "2":
                         if chk_str in status_ping:
-                            dev_up_stat[dev] = "DOWN - 50% packet loss"
+                            dev_up_stat[dev].append("DOWN - 50% packet loss")
+                            dev_up_stat[dev].append("0")
 
                     elif num == "1":
                         if chk_str in status_ping:
-                            dev_up_stat[dev] = "DOWN - 75% packet loss"
+                            dev_up_stat[dev].append("DOWN - 75% packet loss")
+                            dev_up_stat[dev].append("0")
 
                     elif num == "0":
                         if chk_str in status_ping:
-                            dev_up_stat[dev] = "DOWN - 100% packet loss"
+                            dev_up_stat[dev].append("DOWN - 100% packet loss")
+                            dev_up_stat[dev].append("0")
 
-                tracert_map = os.popen(f"traceroute {ip} > .tracert-{dev}.txt")
+                if user_system == "Windows":
+                    os.popen(f"tracert {ip} > .tracert-{dev}.txt")
+
+                elif user_system != "Windows":
+                    os.popen(f"traceroute {ip} > .tracert-{dev}.txt")
 
     t.stop()
     t.join()
-    print(f"\n\n{Style.BRIGHT}Status of devices for inventory {inv_name}:")
-    for key,value in dev_up_stat.items():
-        if "DOWN" in value:
-            print(Fore.RED + f"\nDevice: {key}\nStatus: {value}\n")
-            print(load_slide)
-        else:
-            print(Fore.GREEN + f"\n\nDevice: {key}\nStatus: {value}\n")
-            print(load_slide)
 
-    print(f"To see traceroute output of a device which is down, {Fore.BLUE}{Style.BRIGHT}type the name of the device OR press q to do other tasks")
-    while True:
-        sh_result = input(">>>")
-        if os.path.isfile(f".tracert-{sh_result}.txt"):
-            with open(f".tracert-{sh_result}.txt","r") as f:
-                data = ""
-                for line in f:
-                    data += f"{Fore.GREEN}{Style.BRIGHT}{line}"
-            print(data)
-            break
-
-        elif sh_result == "q":
-            for f in working_dir_contents:
-                if f.startswith(".tracert"):
-                    os.remove(f)
-            break
-
-        else:
-            print(f"No traceroute output for device {sh_result} (press q to do other tasks)")
-
-class device_tasks():
-    def __init__(self, username, password, ip):
-        self.username = username
-        self.password = password
-        self.ip = ip
-
-        self.device_attr = ConnectHandler(
-        device_type="cisco_ios",
-        host= ip,
-        username= username,
-        password= password,
-        )
-
-    def check_all_int(self):
-        output = self.device_attr.send_command("sh ip int br")
-        return output
-    
-    def check_int(self,int_name):
-        command = f"sh int {int_name}"
-        output = self.device_attr.send_command(command)
-        return output
-    
-    def cdp_neigh(self):
-        output = self.device_attr.send_command("sh cdp neigh")
-        return output
-    
-    def ospf_check(self):
-        output = self.device_attr.send_command("sh ip ospf")
-        return output
-    
-    def bgp_check(self):
-        output = self.device_attr.send_command("sh ip bgp")
-        return output
-    
-    def test_connec(self, end_ip):
-        command = f"ping {end_ip}"
-        output = self.device_attr.send_command(command)
-        return output
-
+    return dev_up_stat
 
 def do_tasks_menu():
 
     options = [
+        "Run Health Check on a Device",
         "Check all interface statuses",
         "Check a specific interface status",
         "Check CDP neighbours on a device",
@@ -291,7 +379,6 @@ def do_tasks_menu():
 
     for num, option in enumerate(options):
         print(f"{num+1} : {option}")
-
     while True:
         choice = input(">>> (Choose from option 1-6 or q to quit) ")
         if choice in ['1','2','3','4','5','6']:
@@ -303,7 +390,7 @@ def do_tasks_menu():
     
     return choice
     
-def do_tasks(inv_name, choice):
+def do_tasks(inv_name, choice, upstat_results):
     working_inv = {}
     working_inv.update(inv_list[inv_name])
         
@@ -311,48 +398,89 @@ def do_tasks(inv_name, choice):
 
     devices = [key for key in working_inv if key != "vars"]
 
+    dev_down = []
+
+    for key, value in upstat_results.items():
+        if value[1] == "0":
+            dev_down.append(key)
+
     for num, device in enumerate(devices):
         print(f"{Fore.BLUE}{Style.BRIGHT}{num+1}:{device}")
                 
     while True:
         device_choice = input("\n>>> (Enter device name): ")
-        if device_choice in devices:
+
+        if device_choice in devices and device_choice not in dev_down:
             break
-        else:
+
+        elif device_choice not in devices:
             print(f"{Fore.RED}Please enter a valid choice. ")
+
+        elif device_choice in dev_down:
+            print(f"{Fore.RED}{device_choice} is DOWN. Cannot perform SSH operations")
+
                
     user = working_inv["vars"]["user"]
     password = working_inv["vars"]["pass"]
     ip = working_inv[device_choice]
 
-    assign_task = device_tasks(user,password,ip)
+    assign_task = DeviceTasks(user,password,ip)
 
     if choice == "1":
+        model_info = assign_task.get_facts()
+
+        print(f"{Style.BRIGHT}{Fore.GREEN}Device Model:")
+        for model in model_info:
+            print(f"{Style.BRIGHT}{Fore.GREEN}{model}\n")
+                
+
+        uptime, cpu_usage_sort, cpu_history, total_mem_use, total_mem, used_mem = assign_task.health_check()
+        print(f"{Style.BRIGHT}{Fore.GREEN}{uptime}\n")
+
+        print(f"{Style.BRIGHT}{Fore.GREEN}Processes with most CPU usage:")
+        for cpu in cpu_usage_sort:
+            print(f"{Style.BRIGHT}{Fore.GREEN}{cpu}")
+
+        print(f"{Style.BRIGHT}{Fore.GREEN}CPU Utilisation Graph:")
+        print(f"{Style.BRIGHT}{Fore.GREEN}{cpu_history}")
+
+        if total_mem_use > 80.00:
+            print(f"{Style.BRIGHT}{Fore.RED}Total Memory Used:")
+            print(f"{Style.BRIGHT}{Fore.RED}{total_mem_use:.2f}%")
+            print(f"{Style.BRIGHT}{Fore.RED}BAD: {used_mem}K out of {total_mem}K")
+            print("WARNING: Memory Usage above 80%")
+        else:
+            print(f"{Style.BRIGHT}{Fore.GREEN}Total Memory Used:")
+            print(f"{Style.BRIGHT}{Fore.GREEN}{total_mem_use:.2f}%")
+            print(f"{Style.BRIGHT}{Fore.GREEN}GOOD: {used_mem}K out of {total_mem}K")
+
+    elif choice == "2":
         choice_output = assign_task.check_all_int()
         print(load_slide)
         print(f"{Style.BRIGHT}Interface statuses on {device_choice}:")
         print(f"{Style.BRIGHT}{Fore.GREEN}{choice_output}")
+        assign_task.health_check()
         
-    elif choice == "2":
+    elif choice == "3":
         print(f"{Style.BRIGHT} What interface would you like to check on the device? ")
         int_choice = input(">>>")
         choice_output = assign_task.check_int(int_choice)
         print(f"\n{Style.BRIGHT}Interface status for {int_choice}")
         print(f"{Style.BRIGHT}{Fore.GREEN}{choice_output}")
 
-    elif choice == "3":
+    elif choice == "4":
         choice_output = assign_task.cdp_neigh()
         print(load_slide)
         print(f"{Style.BRIGHT}CDP Neighbour command output on {device_choice}:")
         print(f"{Style.BRIGHT}{Fore.GREEN}{choice_output}")
 
-    elif choice == "4":
+    elif choice == "5":
         choice_output = assign_task.ospf_check()
         print(load_slide)
         print(f"{Style.BRIGHT}OSPF configurations on {device_choice}:")
         print(f"{Style.BRIGHT}{Fore.GREEN}{choice_output}")
 
-    elif choice == "5":
+    elif choice == "6":
         choice_output = assign_task.bgp_check()
         print(load_slide)
         print(f"{Style.BRIGHT}BGP Routing Table on {device_choice}:")
@@ -366,12 +494,14 @@ def do_tasks(inv_name, choice):
         print(f"{Style.BRIGHT}Result of ping from {device_choice} to {ping_choice}:")
         print(f"{Style.BRIGHT}{Fore.GREEN}{choice_output}")'''
 
-class load_anim(threading.Thread):
+class LoadAnim(threading.Thread):
+    """loading animation class"""
     def __init__(self):
         super().__init__()
         self._stop_event = threading.Event()
 
     def run(self):
+        """frames used in loading anim"""
         frames = [
         "  o  ",
         " o   ",
@@ -385,7 +515,18 @@ class load_anim(threading.Thread):
                 time.sleep(0.2)
 
     def stop(self):
+        """event to stop load animation thread"""
         self._stop_event.set()
+
+def cleanup():
+    working_dir_contents = os.listdir(working_dir)
+    for f in working_dir_contents:
+        if f.startswith(".tracert"):
+            os.remove(f)
+        else:
+            pass
+
+    exit(f"{Style.DIM}Goodbye")
 
 def main():
     welcome()
@@ -415,28 +556,65 @@ def main():
 
                 while True:
                     load_inv = input(">>> ")
+
                     if load_inv in inv_list:
                         break
-                    elif load_inv not in inv_list:
+                    else:
                         print(Fore.RED + "Inventory not found. Type the name of inventory you would like to load")
+
+                ping_results = upstatus(load_inv)
                 
-                upstatus(load_inv)
+                print(f"\n\n{Style.BRIGHT}Status of devices for inventory {load_inv}:")
+                for key,value in ping_results.items():
+
+                    check_this = value[0]
+                    if "DOWN" in check_this:
+                        print(Fore.RED + f"\nDevice: {key}\nStatus: {value[0]}\n")
+                        print(load_slide)
+
+                    elif "UP" in check_this:
+                        print(Fore.GREEN + f"\n\nDevice: {key}\nStatus: {value[0]}\n")
+                        print(load_slide)
+
+                print(f"To see traceroute output of a device which is down, {Fore.BLUE}{Style.BRIGHT}type the name of the device OR press q to do other tasks")
+                while True:
+                    sh_result = input(">>> ")
+
+                    if os.path.isfile(f".tracert-{sh_result}.txt"):
+                        with open(f".tracert-{sh_result}.txt","r") as f:
+                            data = ""
+                            for line in f:
+                                data += f"{Fore.GREEN}{Style.BRIGHT}{line}"
+                        print(data)
+
+                        break
+                    
+                    elif sh_result == "q":
+                    
+                        working_dir_contents = os.listdir(working_dir)
+                        for f in working_dir_contents:
+                            if f.startswith(".tracert"):
+                                os.remove(f)
+                        break
+
+                    else:
+                        print(f"No traceroute output for device {sh_result} (press q to do other tasks)")
+
 
                 while True:
                     task_choice = do_tasks_menu()
                     if task_choice == "q":
                         break
                     else:
-                        do_tasks(load_inv,task_choice)
+                        do_tasks(load_inv,task_choice, ping_results)
 
         elif usr_menu_choice == "2":
             usr_inv, inv_name = create_inv(inv_list)
             inv_list[inv_name] = usr_inv
             with open(".invlist.txt","w") as file:
                 file.write(str(inv_list))
-            break
-        
+
         else:
-            exit(f"{Style.DIM}Goodbye")
+            cleanup()
 
 main()
