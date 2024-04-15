@@ -16,6 +16,7 @@ import threading
 import platform
 import colorama
 from pyfiglet import figlet_format
+from cryptography.fernet import Fernet
 from netmiko import ConnectHandler
 from colorama import Fore, Style
 
@@ -30,9 +31,20 @@ user_system = platform.system()
 ## if it has been deleted for some reason create it in the current directory
 if os.path.isfile(".invlist.txt"):
     if os.path.getsize(".invlist.txt") > 0:
-        with open(".invlist.txt","r") as file:
-            updated = file.read()
-            inv_list = ast.literal_eval(updated)
+
+        with open("mykey.key", "rb") as keyfile:
+            inv_key = keyfile.read()
+
+        f = Fernet(inv_key)
+
+        with open(".invlist.txt","rb") as file:
+            updated_encrypted = file.read()
+        
+        updated = f.decrypt(updated_encrypted)
+        updated = updated.decode("utf-8")
+
+        inv_list = ast.literal_eval(updated)
+
     else:
         inv_list = {}
 else:
@@ -528,9 +540,10 @@ def cleanup():
 
     exit(f"{Style.DIM}Goodbye")
 
-def main():
+def main(inv_list:dict):
     welcome()
     while True:
+
         usr_menu_choice = menu()
         
         if usr_menu_choice == "1":
@@ -543,11 +556,45 @@ def main():
                 if choice.lower() == "y":
                     usr_inv, inv_name = create_inv(inv_list)
                     inv_list[inv_name] = usr_inv
+
+                    inv_list = str(inv_list)
+
+                    key = Fernet.generate_key()
+
+                    with open("mykey.key", "wb") as file:
+                        file.write(key)
+                    
+                    with open("mykey.key", "rb") as file:
+                        encryption_key = file.read()
+
+                    f = Fernet(encryption_key)
+
                     with open(".invlist.txt","w") as file:
-                        file.write(str(inv_list))
+                        file.write(inv_list)
+
+                    with open(".invlist.txt","rb") as file:
+                        unencrypted_inv_list = file.read()
+
+                    encrypted_inv_list = f.encrypt(unencrypted_inv_list)
+
+                    with open(".invlist.txt", "wb") as file:
+                        file.write(encrypted_inv_list)
                     
             else:
                 print(f"{load_slide}\n")
+
+                with open("mykey.key", "rb") as keyfile:
+                    key = keyfile.read()
+
+                f = Fernet(key)
+
+                with open(".invlist.txt", "rb") as file:
+                    usr_inv_encrypted = file.read()
+
+                inv_list = f.decrypt(usr_inv_encrypted)
+                inv_list = inv_list.decode("utf-8")
+                inv_list = ast.literal_eval(inv_list)
+
                 print(Style.BRIGHT + "What inventory would you like to load?\n")
                 for num, key in enumerate(inv_list):
                     print(f"{Fore.BLUE}{Style.BRIGHT}{num+1}: {key}")
@@ -610,11 +657,27 @@ def main():
 
         elif usr_menu_choice == "2":
             usr_inv, inv_name = create_inv(inv_list)
+
             inv_list[inv_name] = usr_inv
-            with open(".invlist.txt","w") as file:
-                file.write(str(inv_list))
+            inv_list = str(inv_list)
+
+            with open("mykey.key", "rb") as keyfile:
+                key = keyfile.read()
+
+            f = Fernet(key)
+
+            with open(".invlist.txt", "w") as file:
+                file.write(inv_list)
+            
+            with open(".invlist.txt","rb") as file:
+                unencrypted_inv_list = file.read()
+
+            encrypted_inv_list = f.encrypt(unencrypted_inv_list)
+
+            with open(".invlist.txt", "wb") as file:
+                file.write(encrypted_inv_list)
 
         else:
             cleanup()
 
-main()
+main(inv_list)
